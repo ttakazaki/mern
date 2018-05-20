@@ -1,2 +1,3 @@
 # 特定のファイルを無視する場合は先頭に/を付ける
-/node_modules
+/node_modules/
+/db/
