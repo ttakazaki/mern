@@ -7,13 +7,19 @@ var bodyparser = require('body-parser');
 var mongoose = require('mongoose');
 var fileUpload = require('express-fileupload');
 var passport = require('passport');
-var LocalStrategy = require('passport-local').Strategy;
+var TwitterStrategy = require('passport-twitter').Strategy
 var session = require('express-session');
 
 var User = require('./schema/User');
 var Message = require('./schema/Message');
 
 var app = express();
+
+var twitterConfig = {
+  consumerKey: process.env.TWITTER_CONSUMER_KEY,
+  consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+  callbackURL: process.env.TWITTER_CALLBACK_URL,
+}
 
 mongoose.connect('mongodb://localhost:27017/chatapp',function(err){
   if(err){
@@ -45,58 +51,43 @@ app.get("/",function(req, res, next) {
   })
 });
 
-app.get("/signin", function(req, res, next) {
-  return res.render('signin');
-});
-
-app.post("/signin", fileUpload(), function(req, res, next){
-
-  var avatar = req.files.avatar
-  avatar.mv('./avatar/' + avatar.name, function(err){
-    if(err) throw err
-    var newUser = new User({
-      username: req.body.username,
-      password: req.body.password,
-      avatar_path: '/avatar/' + avatar.name
-    })
-    newUser.save((err)=>{
-      if(err) throw err
-      return res.redirect("/")
-    })
-  })
-})
-
-app.get("/login", function(req, res, next) {
-  return res.render('login')
-});
-
-app.post('/login', passport.authenticate('local'),function(req, res, next) {
-    User.findOne({_id: req.session.passport.user},function(err, user){
-      if(err||!req.session) return res.redirect('/login')
-
-      req.session.user = {
-          username: user.username,
-          avatar_path: user.avatar_path
+passport.use(new TwitterStrategy(twitterConfig,
+  function(token, tokenSecret, profile, done){
+    User.findOne({ twitter_profile_id: profile.id }, function(err, user) {
+      if (err) {
+        return done(err);
+      }else if (!user) {
+        var _user = {
+          username: profile.displayName,
+          twitter_profile_id: profile.id,
+          avatar_path: profile.photos[0].value
+        };
+        var newUser = new User(_user);
+        newUser.save(function(err) {
+          if(err) throw err
+          return done(null, newUser);
+        });
+      }else{
+        return done(null, user);
       }
+    });
+  }
+));
+app.get('/oauth/twitter', passport.authenticate('twitter'));
+
+app.get('/oauth/twitter/callback', passport.authenticate('twitter'),
+  function(req, res, next) {
+
+    User.findOne({_id: req.session.passport.user}, function(err, user){
+      if(err||!req.session) return res.redirect('/oauth/twitter')
+      req.session.user = {
+        username: user.username,
+        avatar_path: user.avatar_path
+      };
       return res.redirect("/")
     })
   }
 );
-
-passport.use(new LocalStrategy(
-  function(username, password, done) {
-    User.findOne({ username: username }, function (err, user) {
-      if (err) { return done(err); }
-      if (!user) {
-        return done(null, false, { message: 'Incorrect username.' });
-      }
-      if (user.password !== password) {
-        return done(null, false, { message: 'Incorrect password.' });
-      }
-      return done(null, user);
-    });
-  }
-));
 
 passport.serializeUser(function(user, done) {
   done(null, user._id);
@@ -112,33 +103,37 @@ app.get("/update", function(req, res, next) {
   return res.render('update');
 });
 
-app.post("/update",fileUpload(), function(req, res, next) {
+app.post("/update", fileUpload(), function(req, res, next) {
+  if(req.files && req.files.image){
+    var img = req.files.image
 
+    img.mv('./image/' + img.name, function(err){
+      if(err) throw err
 
-  if(req.files && req.files.image) {
-    req.files.image.mv('./image/' + req.files.image.name, function(err){
-      if(err) throw err;
       var newMessage = new Message({
-        username: req.session.user.username,
+        username: req.body.username,
+        avatar_path: req.session.user.avatar_path,
         message: req.body.message,
-        image_path: '/image/' + req.files.image.name
-      });
-      newMessage.save((err)=>{
-        if(err) throw err;
+        image_path: '/image/' + img.name
+      })
+      newMessage.save(function(err) {
+        if(err) throw err
         return res.redirect("/");
-      });
-    });
+      })
+    })
   }else{
-    var newMessage = new Message({
-      username: req.body.username,
-      message: req.body.message
-    });
-    newMessage.save((err)=>{
-      if(err) throw err;
-      return res.redirect("/");
-    });
+      var newMessage = new Message({
+        username: req.body.username,
+        avatar_path: req.session.user.avatar_path,
+        message: req.body.message,
+      })
+      newMessage.save(function(err) {
+        if(err) throw err
+        return res.redirect("/")
+      })
   }
-});
+})
+
 
 var server = http.createServer(app);
 server.listen('3000');
