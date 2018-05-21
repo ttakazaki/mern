@@ -28,7 +28,7 @@ var twitterConfig = {
 
 moment.tz.setDefault("Asia/Tokyo");
 
-mongoose.connect('mongodb://localhost:27017/chatapp',function(err){
+mongoose.connect(process.env.MONGODB_URI,function(err){
   if(err){
      console.error(err);
   }else{
@@ -191,4 +191,4 @@ app.use(function(err, req, res, next) {
 });
 
 var server = http.createServer(app);
-server.listen('3000');
+server.listen(process.env.PORT);
