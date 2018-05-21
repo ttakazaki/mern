@@ -1,4 +1,9 @@
 # 特定のファイルを無視する場合は先頭に/を付ける
+*.DS_Store
+._*
+logs
+*.log
+npm-debug.log*
 /node_modules/
 /db/
 /log/
