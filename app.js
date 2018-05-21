@@ -11,10 +11,14 @@ var TwitterStrategy = require('passport-twitter').Strategy
 var session = require('express-session');
 var MongoStore = require('connect-mongo')(session);
 
+// var helmet = require('helmet')
+var csrf = require('csurf')
+
 var User = require('./schema/User');
 var Message = require('./schema/Message');
 
 var app = express();
+var csrfProtection = csrf()
 var log = require('./lib/error_logger')
 
 var twitterConfig = {
@@ -49,6 +53,8 @@ app.use(session({
 }));
 app.use(passport.initialize());
 app.use(passport.session());
+
+// app.use(helmet())
 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
@@ -114,11 +120,11 @@ passport.deserializeUser(function(id, done) {
   });
 });
 
-app.get("/update", function(req, res, next) {
-  return res.render('update');
+app.get("/update", csrfProtection, function(req, res, next) {
+  return res.render('update',{csrf: req.csrfToken()});
 });
 
-app.post("/update", fileUpload(), function(req, res, next) {
+app.post("/update", fileUpload(), csrfProtection, function(req, res, next) {
   if(req.files && req.files.image){
     var img = req.files.image
 
@@ -149,6 +155,19 @@ app.post("/update", fileUpload(), function(req, res, next) {
   }
 })
 
+// var child_process = require('child_process')
+
+// app.get("/test", function(req, res, next){
+//     child_process.execFile('whois' [req.query.url],
+//     function(error, stdout, stderr) {
+//       if (error) {
+//         throw
+//       }
+//       return res.send(stdout)
+//     }
+//   )
+// })
+
 app.use(function(req, res, next) {
   var err = new Error('Not Found')
   err.status = 404
@@ -158,14 +177,18 @@ app.use(function(req, res, next) {
   })
 })
 
-app.use(function(err, req, res, next) {
-  log.error(err)
-  res.status(err.status || 500)
+app.use((err, req, res, next)=> {
+  log.error(err);
+  if (err.code === 'EBADCSRFTOKEN'){
+    res.status(403)
+  }else{
+    res.status(err.status || 500);
+  }
   return res.render('error', {
     message: err.message,
     status: err.status || 500
-  })
-})
+  });
+});
 
 var server = http.createServer(app);
 server.listen('3000');
