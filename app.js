@@ -9,11 +9,13 @@ var fileUpload = require('express-fileupload');
 var passport = require('passport');
 var TwitterStrategy = require('passport-twitter').Strategy
 var session = require('express-session');
+var MongoStore = require('connect-mongo')(session);
 
 var User = require('./schema/User');
 var Message = require('./schema/Message');
 
 var app = express();
+var log = require('./lib/error_logger')
 
 var twitterConfig = {
   consumerKey: process.env.TWITTER_CONSUMER_KEY,
@@ -31,7 +33,20 @@ mongoose.connect('mongodb://localhost:27017/chatapp',function(err){
 
 app.use(bodyparser())
 
-app.use(session({ secret: 'HogeFuga' }));
+app.use(session({
+  secret: 'hogefuga',
+  resave: false,
+  saveUninitialized: false,
+  store: new MongoStore({
+    mongooseConnection: mongoose.connection,
+    // url: 'mongodb://localhost:27017/chatapp',
+    db: 'session',
+    ttl: 14 * 24 * 60 * 60,
+  }),
+  // cookie: {
+  //   secure: true
+  // },
+}));
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -134,6 +149,23 @@ app.post("/update", fileUpload(), function(req, res, next) {
   }
 })
 
+app.use(function(req, res, next) {
+  var err = new Error('Not Found')
+  err.status = 404
+
+  return res.render('error', {
+    status: err.status
+  })
+})
+
+app.use(function(err, req, res, next) {
+  log.error(err)
+  res.status(err.status || 500)
+  return res.render('error', {
+    message: err.message,
+    status: err.status || 500
+  })
+})
 
 var server = http.createServer(app);
 server.listen('3000');
